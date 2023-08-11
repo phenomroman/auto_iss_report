@@ -22,14 +22,12 @@ def iss_loan(br_codes):
     # create directories if not exists
     if not os.path.exists('iss_loan/work_files'):
         os.makedirs('iss_loan/work_files')
-    if not os.path.exists('iss_loan/result'):
-        os.makedirs('iss_loan/result')
     # create empty dataframes inside a dictionary based on given branch names to fill branch data later
     df_dic = {}
     for br_code in br_codes:
         df_dic[br_code] = {}
     # get same month adjusted data in dataframe
-    same_m_adjust_df = same_m_adjustments('raw', br_codes)
+    same_m_adjust_df = same_m_adjustments('RAW_BO', br_codes)
     # define required general variables for branchwise calculation
     # main loan catagories
     particulars = ['Total PAD (General)', 'Total PAD (Capitalized)', 'Total PAD (EDF)', 'Total LTR/MPI',
@@ -46,7 +44,7 @@ def iss_loan(br_codes):
     main_sme_gl_int_sus = [150820006, 150820045, 150820012, 150820010, pd.NA, pd.NA, pd.NA, pd.NA, pd.NA, pd.NA,]
     df_main = pd.DataFrame(
         {
-        'PARTICULARS': particulars + particulars + particulars + particulars + particulars + particulars,
+        'Particulars': particulars + particulars + particulars + particulars + particulars + particulars,
         'GL Code': main_corp_gl_pp + main_sme_gl_pp + main_corp_gl_int + main_sme_gl_int + main_corp_gl_int_sus + main_sme_gl_int_sus
         }
     )
@@ -80,7 +78,7 @@ def iss_loan(br_codes):
     # convert html files into excel files and calculate from dataframes
     for i, br_code in enumerate(br_codes):
         # find relevant html file based on name from input list
-        url = [f'BAL_SHEET/{file}' for file in files if br_code in file.lower()][0]
+        url = [f'BAL_SHEET/{file}' for file in files if 'BALSHEETBRN' and br_code in file][0]
         outfile = f'BAL_SHEET/Excel/{br_code}'
         # convert html to excel
         df_dic[br_code] = html_to_xl(outfile=f'{outfile}.xlsx', url=url, table_range=slice(1,-1),
@@ -94,14 +92,16 @@ def iss_loan(br_codes):
         other_total = df_other_sum['Total'].sum()
         df_other_sum.loc['Total Amount'] = [other_total]
         # calculation of main loan catagories
-        df_main_all = derive_loan_amount(df_main, df_dic[br_code], 'PARTICULARS')
+        df_main_all = derive_loan_amount(df_main, df_dic[br_code], 'Particulars')
         df_main_merged = df_main_all[0]
         df_main_sum = df_main_all[1]
+        df_main_sum.rename(columns={'Total':br_code}, inplace=True)
         df_main_sum.loc['Other Loans'] = [other_total]
-        df_dic[br_code] = df_main_sum
         # get same month adjusted data for each relevant branch and add data to its main summary
         same_m_adjusted = same_m_adjust_df.loc[same_m_adjust_df['BR.'].isin([br_code]), 'LCY_AMOUNT'].sum()
         df_main_sum.loc['Total Loan Disbursed and Settled within this Month'] = [same_m_adjusted]
+        # assign branch data to relevant branch and export data branchwise
+        df_dic[br_code] = df_main_sum
         with pd.ExcelWriter(f'iss_loan/work_files/iss_{br_code}.xlsx', engine='openpyxl') as writer:
             df_main_sum.to_excel(writer, sheet_name='Main_Summary', float_format='%.2f')
             df_other_sum.to_excel(writer, sheet_name='Other_Summary', float_format='%.2f')
@@ -114,14 +114,15 @@ def iss_loan(br_codes):
                 auto_column_width(sheet, df_other_sum)
                 auto_column_width(sheet, df_main_merged)
                 auto_column_width(sheet, df_other_merged)
-    df_final = pd.concat([df_dic[i] for i in br_codes], axis=1, ignore_index=True)
-    df_final.columns = br_codes
+    # combine all branch data for final report
+    df_final = pd.concat([df_dic[i] for i in br_codes], axis=1)
     df_final['Main Operation'] = df_final.sum(axis=1, numeric_only=True)
     particulars.append('Other Loans')
     df_final.insert(0, 'Particulars', particulars)
     # export final output result in excel
-    with pd.ExcelWriter(f'iss_loan/result/ISS_Loan_{report_period}.xlsx', engine='openpyxl') as writer:
+    with pd.ExcelWriter(f'iss_loan/ISS_Loan_{report_period}.xlsx', engine='openpyxl') as writer:
         df_final.to_excel(writer, float_format='%.2f', index=False)
+        # beautify output
         sheet = writer.sheets['Sheet1']
         auto_column_width(sheet, df_final)
         sheet.column_dimensions['A'].width = 55
@@ -151,11 +152,9 @@ def iss_bill(br_codes):
     # create directories if not exists
     if not os.path.exists('iss_bill/work_files'):
         os.makedirs('iss_bill/work_files')
-    if not os.path.exists('iss_bill/result'):
-        os.makedirs('iss_bill/result')
     # get relevant files
-    files = os.listdir('raw')
-    url = [f'raw/{file}' for file in files if 'bills' in file.lower()] [0]
+    files = os.listdir('RAW_BO')
+    url = [f'RAW_BO/{file}' for file in files if 'bills' in file.lower()] [0]
     # get modified/cleaned data from 508 bills BO
     df_bill = modify_raw(url, 'iss_bill/work_files/bill508.xlsx', 'Cont. Ref  No.', 
                          row_ignore=['IB02', 'IB06', 'IB13', 'IB52', 'IB56', 'IB63', 'IB66'])
@@ -178,7 +177,7 @@ def iss_bill(br_codes):
     total_amount_bo = df_contingent_bill['LCY Balance'].sum()
     # convert html file to excel and get the dataframe
     htmls = os.listdir('BAL_SHEET')
-    url = [f'BAL_SHEET/{html}' for html in htmls if 'ho' in html.lower()][0]
+    url = [f'BAL_SHEET/{html}' for html in htmls if 'BALSHEET' in html and 'BALSHEETBRN' not in html][0]
     df_gl = html_to_xl(outfile='BAL_SHEET/Excel/HO.xlsx', url=url, table_range=slice(1,-1),
             cols=['Level', 'Leaf', 'GL Code', 'GL Description', 'FCY Balance', 'LCY Balance', 'Total'],
             ignore_list=['Leaf', 'GL Description'])
@@ -231,13 +230,14 @@ def iss_bill(br_codes):
                 }
             )
             df_dic[br_code] = df_main
-    # combine all branch data horizontally, drop columns duplicated during merge, add total column
+    # combine all branch data horizontally, drop columns duplicated during merge, add a total column
     df_all = pd.concat([df_dic[i] for i in br_codes], axis=1)
     df_final = df_all.loc[:, ~df_all.columns.duplicated()]
-    df_final['Main Operation'] = df_final.sum(axis=1, numeric_only=True)
+    df_final.insert(len(df_final.columns), 'Main Operation', df_final.sum(axis=1, numeric_only=True))
     # export final output result in excel
-    with pd.ExcelWriter(f'iss_bill/result/ISS_Acceptance_{report_period}.xlsx', engine='openpyxl') as writer:
+    with pd.ExcelWriter(f'iss_bill/ISS_Acceptance_{report_period}.xlsx', engine='openpyxl') as writer:
         df_final.to_excel(writer, float_format='%.2f', index=False)
+        # beautify output
         sheet = writer.sheets['Sheet1']
         auto_column_width(sheet, df_final)
         sheet.column_dimensions['A'].width = 55
@@ -250,10 +250,11 @@ def main(br_codes):
     # create directories if not exists
     if not os.path.exists('BAL_SHEET/Excel'):
         os.makedirs('BAL_SHEET/Excel')
-    if not os.path.exists('raw'):
-        os.makedirs('raw')
-    iss_loan(br_codes=br_codes)
+    if not os.path.exists('RAW_BO'):
+        os.makedirs('RAW_BO')
+    # call relevant functions to generate different parts of report
     iss_bill(br_codes=br_codes)
+    iss_loan(br_codes=br_codes)
 
 if __name__ == '__main__':
     br_codes=['101', '102', '103', '104', '105', '106', '110', '116', '195', '200', '301', '331', '999']
