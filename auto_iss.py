@@ -95,7 +95,6 @@ def iss_loan(br_codes):
         df_main_all = derive_loan_amount(df_main, df_dic[br_code], 'Particulars')
         df_main_merged = df_main_all[0]
         df_main_sum = df_main_all[1]
-        df_main_sum.rename(columns={'Total':br_code}, inplace=True)
         df_main_sum.loc['Other Loans'] = [other_total]
         # get same month adjusted data for each relevant branch and add data to its main summary
         same_m_adjusted = same_m_adjust_df.loc[same_m_adjust_df['BR.'].isin([br_code]), 'LCY_AMOUNT'].sum()
@@ -116,6 +115,7 @@ def iss_loan(br_codes):
                 auto_column_width(sheet, df_other_merged)
     # combine all branch data for final report
     df_final = pd.concat([df_dic[i] for i in br_codes], axis=1)
+    df_final.columns = br_codes
     df_final['Main Operation'] = df_final.sum(axis=1, numeric_only=True)
     particulars.append('Other Loans')
     df_final.insert(0, 'Particulars', particulars)
