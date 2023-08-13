@@ -199,19 +199,19 @@ def iss_bill(br_codes):
         local_codes = ['LC04', 'LC99']
         foreign_codes = ['LC02', 'LC06', 'LC10', 'LC12', 'LC18', 'LC22', 'LC25', 'LC27']
         foreign_other_codes = ['LC01']
-        other_codes = ['IB16']
+        other_codes = ['LC14', 'LC16']
         local_export_codes = ['LC04']
         local_other_codes = ['LC99']
         for br_code in br_codes:
-            df = df_contingent_bill.loc[df_contingent_bill['Br. Code'].isin([br_code])]
+            df = df_bill.loc[df_bill['Br. Code'].isin([br_code])]
             # Accepted Bills Payable (Local) - LC04, LC99
             local_bill_amount = df.loc[df['LC Code'].isin(local_codes), 'LCY Balance'].sum()
             # Accepted Bills Payable ( Foreign) - LC02, LC06, LC10, LC12, LC22, LC25, LC27
             foreign_bill_amount = df.loc[df['LC Code'].isin(foreign_codes), 'LCY Balance'].sum()
             foreign_other_amount = df.loc[df['LC Code'].isin(foreign_other_codes), 'LCY Balance'].sum()
             total_foreign_bill_amount = foreign_bill_amount + foreign_other_amount
-            # Other Bills Payable - IB16
-            other_bill_amount = df.loc[df['Code'].isin(other_codes), 'LCY Balance'].sum()
+            # Other Bills Payable - LC14, LC16
+            other_bill_amount = df.loc[df['LC Code'].isin(other_codes), 'LCY Balance'].sum()
             # Total Acceptance provided Against Inland Bill Related to Export LC - LC04
             local_export_bill_amount = df.loc[df['LC Code'].isin(local_export_codes), 'LCY Balance'].sum()
             # Total Acceptance Provided Against Inland Bill not Related to Export LC - LC99
