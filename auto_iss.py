@@ -76,7 +76,7 @@ def iss_loan(br_codes):
     # get relevant GL html files
     files = os.listdir('BAL_SHEET')
     # convert html files into excel files and calculate from dataframes
-    for i, br_code in enumerate(br_codes):
+    for br_code in br_codes:
         # find relevant html file based on name from input list
         url = [f'BAL_SHEET/{file}' for file in files if 'BALSHEETBRN' and br_code in file][0]
         outfile = f'BAL_SHEET/Excel/{br_code}'
