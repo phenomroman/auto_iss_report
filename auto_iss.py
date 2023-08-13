@@ -158,7 +158,7 @@ def iss_bill(br_codes):
     # get modified/cleaned data from 508 bills BO
     df_bill = modify_raw(url, 'iss_bill/work_files/bill508.xlsx', 'Cont. Ref  No.', 
                          row_ignore=['IB02', 'IB06', 'IB13', 'IB52', 'IB56', 'IB63', 'IB66'])
-    # create extra column with LC codes for further calculation
+    # create extra columns with LC and branch codes for further calculation
     lc_code_column = pd.Series(df_bill['Contract No.'].str[6:8], index=df_bill.index)
     br_code_column = pd.Series(df_bill['Cont. Ref  No.'].str[:3], index=df_bill.index)
     df_bill.insert(1, 'LC Code', 'LC' + lc_code_column.astype(str))
@@ -175,7 +175,7 @@ def iss_bill(br_codes):
     # separate contingent liability and get total bill amount
     df_contingent_bill = df_bill.loc[~df_bill['Code'].isin(['IB16'])]
     total_amount_bo = df_contingent_bill['LCY Balance'].sum()
-    # convert html file to excel and get the dataframe
+    # convert html file to excel and get GLs in the dataframe
     htmls = os.listdir('BAL_SHEET')
     url = [f'BAL_SHEET/{html}' for html in htmls if 'BALSHEET' in html and 'BALSHEETBRN' not in html][0]
     df_gl = html_to_xl(outfile='BAL_SHEET/Excel/HO.xlsx', url=url, table_range=slice(1,-1),
@@ -194,6 +194,7 @@ def iss_bill(br_codes):
                    'Total Acceptance Provided Against Inland Bill not Related to Export LC',
                    'Total Acceptance Provided Against Foreign Bill', 
                    'Total Outstanding of Acceptance Issued Against  FB/IB/AB']
+    # calculate ISS for accepted bills if bill amount from BO matches with GL
     if abs(total_amount_bo - total_amount_gl) < 1:
         # calculate amount as per report catagories with given branch codes
         local_codes = ['LC04', 'LC99']
