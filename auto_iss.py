@@ -19,7 +19,7 @@ import os
 report_period = datetime.strftime(datetime.today().replace(day=1) - timedelta(days=1), '%B%Y')
 
 def iss_loan(br_codes):
-    # create directories if not exists
+    # create directories if not exist
     if not os.path.exists('iss_loan/work_files'):
         os.makedirs('iss_loan/work_files')
     # create empty dataframes inside a dictionary based on given branch names to fill branch data later
@@ -149,7 +149,7 @@ def derive_loan_amount(df_cat, df_br, index):
     return df_cat_merged, df_cat_sum
 
 def iss_bill(br_codes):
-    # create directories if not exists
+    # create directories if not exist
     if not os.path.exists('iss_bill/work_files'):
         os.makedirs('iss_bill/work_files')
     # get relevant files
@@ -164,7 +164,7 @@ def iss_bill(br_codes):
     df_bill.insert(1, 'LC Code', 'LC' + lc_code_column.astype(str))
     df_bill.insert(2, 'Br. Code', br_code_column)
     # export modified working file
-    with pd.ExcelWriter('iss_bill/work_files/bill508.xlsx', engine='openpyxl') as writer:
+    with pd.ExcelWriter('iss_bill/work_files/bill_508.xlsx', engine='openpyxl') as writer:
         df_bill.to_excel(writer, sheet_name='Report1', float_format='%.2f', index=False)
         sheet = writer.sheets['Report1']
         for cell in sheet['G']:
@@ -188,46 +188,40 @@ def iss_bill(br_codes):
     df_dic = {}
     for br_code in br_codes:
         df_dic[br_code] = {}
-    # define particulars as row indices
-    particulars = ['Accepted Bills Payable (Local)', 'Accepted Bills Payable ( Foreign)', 'Other Bills Payable',
-                   'Total Acceptance provided Against Inland Bill Related to Export LC',
-                   'Total Acceptance Provided Against Inland Bill not Related to Export LC',
-                   'Total Acceptance Provided Against Foreign Bill', 
-                   'Total Outstanding of Acceptance Issued Against  FB/IB/AB']
+    # define report catagories as particulars in row indices
+    particulars = [
+        'Accepted Bills Payable (Local)', #LC04, LC99
+        'Accepted Bills Payable ( Foreign)', #LC02, LC06, LC10, LC12, LC22, LC25, LC27, (other- LC01)
+        'Other Bills Payable', #LC14, LC16
+        'Total Acceptance provided Against Inland Bill Related to Export LC', #LC04
+        'Total Acceptance Provided Against Inland Bill not Related to Export LC', #LC99
+        'Total Acceptance Provided Against Foreign Bill', #LC02, LC06, LC10, LC12, LC22, LC25, LC27, (other- LC01)
+        'Total Outstanding of Acceptance Issued Against  FB/IB/AB' #local + foreign + other
+    ]
     # calculate ISS for accepted bills if bill amount from BO matches with GL
     if abs(total_amount_bo - total_amount_gl) < 1:
+        # define LC Codes and Bill Amount with same variable name as per report catagories
+        lc_codes = {
+            'local': ['LC04', 'LC99'], 'local_export': ['LC04'], 'local_other': ['LC99'], 
+            'foreign': ['LC02', 'LC06', 'LC10', 'LC12', 'LC18', 'LC22', 'LC25', 'LC27'], 
+            'foreign_other': ['LC01'], 'other': ['LC14', 'LC16'],
+        }
+        bill_amount = {
+            'local': 0, 'local_export': 0, 'local_other': 0, 'foreign': 0, 'foreign_other': 0, 'other': 0,
+        }
         # calculate amount as per report catagories with given branch codes
-        local_codes = ['LC04', 'LC99']
-        foreign_codes = ['LC02', 'LC06', 'LC10', 'LC12', 'LC18', 'LC22', 'LC25', 'LC27']
-        foreign_other_codes = ['LC01']
-        other_codes = ['LC14', 'LC16']
-        local_export_codes = ['LC04']
-        local_other_codes = ['LC99']
         for br_code in br_codes:
             df = df_bill.loc[df_bill['Br. Code'].isin([br_code])]
-            # Accepted Bills Payable (Local) - LC04, LC99
-            local_bill_amount = df.loc[df['LC Code'].isin(local_codes), 'LCY Balance'].sum()
-            # Accepted Bills Payable ( Foreign) - LC02, LC06, LC10, LC12, LC22, LC25, LC27
-            foreign_bill_amount = df.loc[df['LC Code'].isin(foreign_codes), 'LCY Balance'].sum()
-            foreign_other_amount = df.loc[df['LC Code'].isin(foreign_other_codes), 'LCY Balance'].sum()
-            total_foreign_bill_amount = foreign_bill_amount + foreign_other_amount
-            # Other Bills Payable - LC14, LC16
-            other_bill_amount = df.loc[df['LC Code'].isin(other_codes), 'LCY Balance'].sum()
-            # Total Acceptance provided Against Inland Bill Related to Export LC - LC04
-            local_export_bill_amount = df.loc[df['LC Code'].isin(local_export_codes), 'LCY Balance'].sum()
-            # Total Acceptance Provided Against Inland Bill not Related to Export LC - LC99
-            local_other_bill_amount = df.loc[df['LC Code'].isin(local_other_codes), 'LCY Balance'].sum()
-            # Total Acceptance Provided Against Foreign Bill - LC02, LC06, LC10, LC12, LC18, LC22, LC25, LC27
-            total_foreign_bill_amount
-            # Total Outstanding of Acceptance Issued Against  FB/IB/AB - Total foreign + local + other
-            total_acceptance_bill = total_foreign_bill_amount + local_bill_amount + other_bill_amount
+            for report_cat, lc_code in lc_codes.items():
+                bill_amount[report_cat] = df.loc[df['LC Code'].isin(lc_code), 'LCY Balance'].sum()
             # create new dataframe with the derived data and set dataframe branchwise
             df_main = pd.DataFrame(
                 {
                     'Particulars': particulars,
-                    br_code: [local_bill_amount, total_foreign_bill_amount, other_bill_amount,
-                              local_export_bill_amount, local_other_bill_amount, total_foreign_bill_amount,
-                              total_acceptance_bill]
+                    br_code: [bill_amount['local'], bill_amount['foreign'] + bill_amount['foreign_other'],
+                              bill_amount['other'], bill_amount['local_export'], bill_amount['local_other'],
+                              bill_amount['foreign'] + bill_amount['foreign_other'],  bill_amount['local'] + 
+                              bill_amount['foreign'] + bill_amount['foreign_other'] + bill_amount['other']]
                 }
             )
             df_dic[br_code] = df_main
@@ -248,7 +242,7 @@ def iss_bill(br_codes):
                 cell.number_format = '#,##0.00'
     
 def main(br_codes):
-    # create directories if not exists
+    # create directories if not exist
     if not os.path.exists('BAL_SHEET/Excel'):
         os.makedirs('BAL_SHEET/Excel')
     if not os.path.exists('RAW_BO'):
