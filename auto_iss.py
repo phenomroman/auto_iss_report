@@ -8,7 +8,10 @@
 # Copyright:   (c) phenomroman 2023
 # Licence:     BSD
 #-------------------------------------------------------------------------------
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
+from threading import Thread, Event, Lock
+from time import sleep
 from  auto_report import modify_raw
 from auto_report import html_to_xl
 from auto_report import auto_column_width
@@ -18,6 +21,40 @@ import os
 # get last month for report period name
 report_period = datetime.strftime(datetime.today().replace(day=1) - timedelta(days=1), '%B%Y')
 
+# function to show task completion
+def task_completed(future):
+    global reports, report_generated
+    with Lock():
+        report_generated += 1
+        print(f"{report_generated}/{reports} reports generated")
+
+# function to show loading animation
+def loading(done, message="Loading: ", symbols=['\\', '|', '/', '-']):
+    i = 0
+    while not done.is_set():
+        print(message, end="")
+        print(f"{symbols[i]}", flush=True, end="\r")
+        sleep(0.25)
+        i = (i + 1) % len(symbols)
+
+# function to take user input for branch choices
+def user_input(question):
+    check = input(f"{question} Y/N: ").lower().strip()
+    try:
+        if check[0] == 'y':
+            return True
+        elif check[0] == 'n':
+            return False
+        else:
+            print("Invalid input")
+            print("Please enter a valid answer between Y and N")
+            return user_input(question)
+    except Exception as e:
+        print(e)
+        print("Please enter a valid answer between Y and N")
+        return user_input(question)
+
+# function to calculate loan related ISS report
 def iss_loan(br_codes):
     # create directories if not exist
     if not os.path.exists('iss_loan/work_files'):
@@ -131,6 +168,7 @@ def iss_loan(br_codes):
             for cell in sheet[col]:
                 cell.number_format = '#,##0.00'
 
+# function to get data for loans adjusted within the same month of creation
 def same_m_adjustments(indir, br_codes):
     # get input filename from hint
     bo_files = os.listdir(indir)
@@ -143,11 +181,13 @@ def same_m_adjustments(indir, br_codes):
     df = df.loc[df['BR.'].isin(br_list) & df['PRODUCT_CODE'].isin(product_codes)]
     return df
 
+# function to derive loan amount from GL for each branch
 def derive_loan_amount(df_cat, df_br, index):
     df_cat_merged = pd.merge(df_cat, df_br, on='GL Code', how='left').drop(['Level', 'Leaf', 'FCY Balance', 'LCY Balance'], axis=1)
     df_cat_sum = df_cat_merged.pivot_table(values='Total', index=index, aggfunc='sum', sort=False)
     return df_cat_merged, df_cat_sum
 
+# function to calculate accepted bill related ISS report
 def iss_bill(br_codes):
     # create directories if not exist
     if not os.path.exists('iss_bill/work_files'):
@@ -240,6 +280,7 @@ def iss_bill(br_codes):
         for col in col_list:
             for cell in sheet[col]:
                 cell.number_format = '#,##0.00'
+    return True
     
 def main(br_codes):
     # create directories if not exist
@@ -247,10 +288,40 @@ def main(br_codes):
         os.makedirs('BAL_SHEET/Excel')
     if not os.path.exists('RAW_BO'):
         os.makedirs('RAW_BO')
-    # call relevant functions to generate different parts of report
-    iss_bill(br_codes=br_codes)
-    iss_loan(br_codes=br_codes)
+    # generate reports for different parts of ISS with threading to show loader and completion
+    loading_message = "Processing: "
+    loading_symbols = [
+        '|➤➢➢➢➢➢➢➢➢', '/➤➤➢➢➢➢➢➢➢', '-➤➤➤➢➢➢➢➢➢', '\\➤➤➤➤➢➢➢➢➢', '|➤➤➤➤➤➢➢➢➢', '/➤➤➤➤➤➤➢➢➢', '-➤➤➤➤➤➤➤➢➢', '\\➤➤➤➤➤➤➤➤➢', '|➤➤➤➤➤➤➤➤➤',
+        '\\➤➤➤➤➤➤➤➤➢', '-➤➤➤➤➤➤➤➢➢', '/➤➤➤➤➤➤➢➢➢', '|➤➤➤➤➤➢➢➢➢', '\\➤➤➤➤➢➢➢➢➢', '-➤➤➤➢➢➢➢➢➢', '/➤➤➢➢➢➢➢➢➢', '|➤➢➢➢➢➢➢➢➢', 
+    ]
+    done = Event()
+    loader = Thread(target=loading, args=[done, loading_message, loading_symbols])
+    loader.start()
+    with ThreadPoolExecutor(2) as executor:
+        global reports, report_generated
+        futures = [executor.submit(iss_bill, br_codes), executor.submit(iss_loan, br_codes)]
+        reports = len(futures)
+        report_generated = 0
+        for future in futures:
+            future.add_done_callback(task_completed)
+    done.set() # fulfill loader's ending condition
+    loader.join() # wait for loader to finish
 
 if __name__ == '__main__':
-    br_codes=['101', '102', '103', '104', '105', '106', '110', '116', '195', '200', '301', '331', '999']
-    main(br_codes)
+    br_codes=['001', '101', '102', '103', '104', '105', '106', '110', '116', '195', '200', '301', '331', '999']
+    if user_input("Do you want to exclude any branch?"):
+        exclude_br = []
+        n = int(input("How many branhces do you want to exclude? "))
+        while n > 0:
+            br = input("Exclude Branch code: ")
+            exclude_br.append(br)
+            n -= 1
+    else:
+        exclude_br = []
+    br_codes = [br_code for br_code in br_codes if br_code not in exclude_br]
+    try:
+        main(br_codes)
+        print("!SUCCESS! Reports generated in respective folders")
+        sleep(2)
+    except Exception as e:
+        print(f"!ERROR! {e}")
