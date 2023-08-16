@@ -1,4 +1,5 @@
-#-------------------------------------------------------------------------------
+#! /usr/bin/env python3
+# -------------------------------------------------------------------------------
 # Name:        auto_iss
 # Purpose:     Automatically generate ISS report from html balance sheet and BO files
 #
@@ -12,47 +13,12 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from threading import Thread, Event, Lock
 from time import sleep
-from  auto_report import modify_raw
-from auto_report import html_to_xl
-from auto_report import auto_column_width
+from feats import loading, user_input, auto_column_width, html_to_xl, modify_raw
 import pandas as pd
 import os
 
 # get last month for report period name
 report_period = datetime.strftime(datetime.today().replace(day=1) - timedelta(days=1), '%B%Y')
-
-# function to show task completion
-def task_completed(future):
-    global reports, report_generated
-    with Lock():
-        report_generated += 1
-        print(f"{report_generated}/{reports} reports generated")
-
-# function to show loading animation
-def loading(done, message="Loading: ", symbols=['\\', '|', '/', '-']):
-    i = 0
-    while not done.is_set():
-        print(message, end="")
-        print(f"{symbols[i]}", flush=True, end="\r")
-        sleep(0.25)
-        i = (i + 1) % len(symbols)
-
-# function to take user input for branch choices
-def user_input(question):
-    check = input(f"{question} Y/N: ").lower().strip()
-    try:
-        if check[0] == 'y':
-            return True
-        elif check[0] == 'n':
-            return False
-        else:
-            print("Invalid input")
-            print("Please enter a valid answer between Y and N")
-            return user_input(question)
-    except Exception as e:
-        print(e)
-        print("Please enter a valid answer between Y and N")
-        return user_input(question)
 
 # function to calculate loan related ISS report
 def iss_loan(br_codes):
@@ -298,13 +264,19 @@ def main(br_codes):
     loader = Thread(target=loading, args=[done, loading_message, loading_symbols])
     loader.start()
     with ThreadPoolExecutor(2) as executor:
+        # function to show task completion
+        def task_completed(future):
+            global reports, report_generated
+            with Lock():
+                report_generated += 1
+                print(f"{report_generated}/{reports} reports generated")
         global reports, report_generated
         futures = [executor.submit(iss_bill, br_codes), executor.submit(iss_loan, br_codes)]
         reports = len(futures)
         report_generated = 0
         for future in futures:
             future.add_done_callback(task_completed)
-    done.set() # fulfill loader's ending condition
+    done.set() # loader's ending condition
     loader.join() # wait for loader to finish
 
 if __name__ == '__main__':
