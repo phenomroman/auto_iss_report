@@ -257,25 +257,26 @@ def main(br_codes):
     # generate reports for different parts of ISS with threading to show loader and completion
     loading_message = "Processing: "
     loading_symbols = [
-        '|➤➢➢➢➢➢➢➢➢', '/➤➤➢➢➢➢➢➢➢', '-➤➤➤➢➢➢➢➢➢', '\\➤➤➤➤➢➢➢➢➢', '|➤➤➤➤➤➢➢➢➢', '/➤➤➤➤➤➤➢➢➢', '-➤➤➤➤➤➤➤➢➢', '\\➤➤➤➤➤➤➤➤➢', '|➤➤➤➤➤➤➤➤➤',
-        '\\➤➤➤➤➤➤➤➤➢', '-➤➤➤➤➤➤➤➢➢', '/➤➤➤➤➤➤➢➢➢', '|➤➤➤➤➤➢➢➢➢', '\\➤➤➤➤➢➢➢➢➢', '-➤➤➤➢➢➢➢➢➢', '/➤➤➢➢➢➢➢➢➢', '|➤➢➢➢➢➢➢➢➢', 
+        '|▷▷▷▷▷▷▷▷|', '/▶▷▷▷▷▷▷▷|', '-▶▶▷▷▷▷▷▷|', '\\▶▶▶▷▷▷▷▷|', '|▶▶▶▶▷▷▷▷|', '/▶▶▶▶▶▷▷▷|', '-▶▶▶▶▶▶▷▷|', '\\▶▶▶▶▶▶▶▷|',
+        '|▶▶▶▶▶▶▶▶|', '|▶▶▶▶▶▶▶▷\\', '|▶▶▶▶▶▶▷▷-', '|▶▶▶▶▶▷▷▷/', '|▶▶▶▶▷▷▷▷|', '|▶▶▶▷▷▷▷▷\\', '|▶▶▷▷▷▷▷▷-', '|▶▷▷▷▷▷▷▷/',
     ]
     done = Event()
     loader = Thread(target=loading, args=[done, loading_message, loading_symbols])
     loader.start()
     with ThreadPoolExecutor(2) as executor:
         # function to show task completion
-        def task_completed(future):
-            global reports, report_generated
+        def tasks_completed(future):
+            global reports, report_generated, progress
             with Lock():
                 report_generated += 1
-                print(f"{report_generated}/{reports} reports generated")
-        global reports, report_generated
+                progress = (report_generated/reports) * 100
+                print(f"{report_generated}/{reports} reports generated {round(progress)}%", flush=True)
+        global reports, report_generated, progress
         futures = [executor.submit(iss_bill, br_codes), executor.submit(iss_loan, br_codes)]
         reports = len(futures)
         report_generated = 0
         for future in futures:
-            future.add_done_callback(task_completed)
+            future.add_done_callback(tasks_completed)
     done.set() # loader's ending condition
     loader.join() # wait for loader to finish
 
