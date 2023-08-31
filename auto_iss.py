@@ -15,10 +15,11 @@ from threading import Thread, Event, Lock
 from time import sleep
 from feats import loading, user_input, auto_column_width, html_to_xl, modify_raw
 import pandas as pd
-import os
+import os, sys
 
 # get last month for report period name
 report_period = datetime.strftime(datetime.today().replace(day=1) - timedelta(days=1), '%B%Y')
+report_options = {1: 'ISS Import Loan', 2: 'ISS Bills Acceptance'}
 
 # function to calculate loan related ISS report
 def iss_loan(br_codes, exclude_br=[]):
@@ -255,7 +256,7 @@ def iss_acceptance(br_codes, exclude_br=[]):
             for cell in sheet[col]:
                 cell.number_format = '#,##0.00'
     
-def main(functions, br_codes, exclude_br):
+def main(functions, br_codes, exclude_br=[], selection=1):
     # create directories if not exist
     if not os.path.exists('BAL_SHEET/Excel'):
         os.makedirs('BAL_SHEET/Excel')
@@ -273,13 +274,18 @@ def main(functions, br_codes, exclude_br):
     with ThreadPoolExecutor(2) as executor:
         # function to show task completion
         def tasks_completed(future):
-            global reports, report_generated, progress
+            global reports, report_generated, progress, selection
             with Lock():
-                report_generated += 1
-                progress = (report_generated/reports) * 100
-                print(f"{report_generated}/{reports} reports generated {round(progress)}%", flush=True)
+                try:
+                    result = future.result()
+                    selection += 1
+                    report_generated += 1
+                    progress = (report_generated/reports) * 100
+                    print(f"{report_options[selection]} report generated.")
+                    print(f"{report_generated}/{reports} reports completed - {round(progress)}%", flush=True)
+                except Exception as e:
+                    print(f"!ERROR! {e} at line {sys.exc_info()[2].tb_lineno}")
         global reports, report_generated, progress
-        #futures = [executor.submit(iss_acceptance, br_codes, exclude_br), executor.submit(iss_loan, br_codes, exclude_br)]
         futures = []
         for f in functions:
             futures.append(executor.submit(f, br_codes, exclude_br))
@@ -303,16 +309,12 @@ if __name__ == '__main__':
         br_codes = [br_code for br_code in br_codes if br_code not in exclude_br]
     # give users option to select report catagory
     functions =[iss_loan, iss_acceptance]
+    selection = 0
     if user_input("Do you want to generate only a part of the report?"):
-        options = {1: 'ISS Import Loan', 2: 'ISS Bills Acceptance'}
-        for key, value in options.items():
-            print(f"{key}. {value}", end="  ")
+        for key, value in report_options.items():
+            print(f"{key}){value}", end="  ")
         selection = int(input("\nChoose a report catagory: ")) - 1
         functions = [f for i, f in enumerate(functions) if i == selection]
     # run main function
-    try:
-        main(functions, br_codes, exclude_br)
-        print("!SUCCESS! Reports generated in respective folders")
-        sleep(2)
-    except Exception as e:
-        print(f"!ERROR! {e}")
+    main(functions, br_codes, exclude_br, selection)
+    sleep(2)
