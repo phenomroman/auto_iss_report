@@ -21,7 +21,7 @@ import os
 report_period = datetime.strftime(datetime.today().replace(day=1) - timedelta(days=1), '%B%Y')
 
 # function to calculate loan related ISS report
-def iss_loan(br_codes):
+def iss_loan(br_codes, exclude_br=[]):
     # create directories if not exist
     if not os.path.exists('iss_loan/work_files'):
         os.makedirs('iss_loan/work_files')
@@ -119,11 +119,14 @@ def iss_loan(br_codes):
     # combine all branch data for final report
     df_final = pd.concat([df_dic[i] for i in br_codes], axis=1)
     df_final.columns = br_codes
+    for br in exclude_br: #fillna blank column data for excluded branches
+        df_final[br] = pd.NA
+    df_final = df_final[sorted(df_final.columns)] #sort columns branchwise
     df_final['Main Operation'] = df_final.sum(axis=1, numeric_only=True)
     particulars.append('Other Loans')
     df_final.insert(0, 'Particulars', particulars)
     # export final output result in excel
-    with pd.ExcelWriter(f'iss_loan/ISS_Loan_{report_period}.xlsx', engine='openpyxl') as writer:
+    with pd.ExcelWriter(f'iss_loan/ISS_Import-Loan_{report_period}.xlsx', engine='openpyxl') as writer:
         df_final.to_excel(writer, float_format='%.2f', index=False)
         # beautify output
         sheet = writer.sheets['Sheet1']
@@ -154,15 +157,15 @@ def derive_loan_amount(df_cat, df_br, index):
     return df_cat_merged, df_cat_sum
 
 # function to calculate accepted bill related ISS report
-def iss_bill(br_codes):
+def iss_acceptance(br_codes, exclude_br=[]):
     # create directories if not exist
-    if not os.path.exists('iss_bill/work_files'):
-        os.makedirs('iss_bill/work_files')
+    if not os.path.exists('iss_acceptance/work_files'):
+        os.makedirs('iss_acceptance/work_files')
     # get relevant files
     files = os.listdir('RAW_BO')
     url = [f'RAW_BO/{file}' for file in files if 'bills' in file.lower()] [0]
     # get modified/cleaned data from 508 bills BO
-    df_bill = modify_raw(url, 'iss_bill/work_files/bill508.xlsx', 'Cont. Ref  No.', 
+    df_bill = modify_raw(url, 'iss_acceptance/work_files/bill508.xlsx', 'Cont. Ref  No.', 
                          row_ignore=['IB02', 'IB06', 'IB13', 'IB52', 'IB56', 'IB63', 'IB66'])
     # create extra columns with LC and branch codes for further calculation
     lc_code_column = pd.Series(df_bill['Contract No.'].str[6:8], index=df_bill.index)
@@ -170,7 +173,7 @@ def iss_bill(br_codes):
     df_bill.insert(1, 'LC Code', 'LC' + lc_code_column.astype(str))
     df_bill.insert(2, 'Br. Code', br_code_column)
     # export modified working file
-    with pd.ExcelWriter('iss_bill/work_files/bill_508.xlsx', engine='openpyxl') as writer:
+    with pd.ExcelWriter('iss_acceptance/work_files/bill_508.xlsx', engine='openpyxl') as writer:
         df_bill.to_excel(writer, sheet_name='Report1', float_format='%.2f', index=False)
         sheet = writer.sheets['Report1']
         for cell in sheet['G']:
@@ -233,10 +236,15 @@ def iss_bill(br_codes):
             df_dic[br_code] = df_main
     # combine all branch data horizontally, drop columns duplicated during merge, add a total column
     df_all = pd.concat([df_dic[i] for i in br_codes], axis=1)
+    for br in exclude_br: #fillna blank column data for excluded branches
+        df_all[br] = pd.NA
     df_final = df_all.loc[:, ~df_all.columns.duplicated()]
+    key_col = df_final.pop(df_final.columns[0])
+    df_final = df_final[sorted(df_final.columns)] #sort columns branchwise
+    df_final.insert(0, key_col.name, key_col)
     df_final.insert(len(df_final.columns), 'Main Operation', df_final.sum(axis=1, numeric_only=True))
     # export final output result in excel
-    with pd.ExcelWriter(f'iss_bill/ISS_Acceptance_{report_period}.xlsx', engine='openpyxl') as writer:
+    with pd.ExcelWriter(f'iss_acceptance/ISS_Bills-Acceptance_{report_period}.xlsx', engine='openpyxl') as writer:
         df_final.to_excel(writer, float_format='%.2f', index=False)
         # beautify output
         sheet = writer.sheets['Sheet1']
@@ -246,9 +254,8 @@ def iss_bill(br_codes):
         for col in col_list:
             for cell in sheet[col]:
                 cell.number_format = '#,##0.00'
-    return True
     
-def main(br_codes):
+def main(functions, br_codes, exclude_br):
     # create directories if not exist
     if not os.path.exists('BAL_SHEET/Excel'):
         os.makedirs('BAL_SHEET/Excel')
@@ -272,7 +279,10 @@ def main(br_codes):
                 progress = (report_generated/reports) * 100
                 print(f"{report_generated}/{reports} reports generated {round(progress)}%", flush=True)
         global reports, report_generated, progress
-        futures = [executor.submit(iss_bill, br_codes), executor.submit(iss_loan, br_codes)]
+        #futures = [executor.submit(iss_acceptance, br_codes, exclude_br), executor.submit(iss_loan, br_codes, exclude_br)]
+        futures = []
+        for f in functions:
+            futures.append(executor.submit(f, br_codes, exclude_br))
         reports = len(futures)
         report_generated = 0
         for future in futures:
@@ -281,19 +291,27 @@ def main(br_codes):
     loader.join() # wait for loader to finish
 
 if __name__ == '__main__':
-    br_codes=['001', '101', '102', '103', '104', '105', '106', '110', '116', '195', '200', '301', '331', '999']
+    # give users option to exclude any branches
+    br_codes=['001', '091', '101', '102', '103', '104', '105', '106', '110', '116', '195', '200', '301', '331', '999']
+    exclude_br = []
     if user_input("Do you want to exclude any branch?"):
-        exclude_br = []
         n = int(input("How many branhces do you want to exclude? "))
         while n > 0:
             br = input("Exclude Branch code: ")
             exclude_br.append(br)
             n -= 1
-    else:
-        exclude_br = []
-    br_codes = [br_code for br_code in br_codes if br_code not in exclude_br]
+        br_codes = [br_code for br_code in br_codes if br_code not in exclude_br]
+    # give users option to select report catagory
+    functions =[iss_loan, iss_acceptance]
+    if user_input("Do you want to generate only a part of the report?"):
+        options = {1: 'ISS Import Loan', 2: 'ISS Bills Acceptance'}
+        for key, value in options.items():
+            print(f"{key}. {value}", end="  ")
+        selection = int(input("\nChoose a report catagory: ")) - 1
+        functions = [f for i, f in enumerate(functions) if i == selection]
+    # run main function
     try:
-        main(br_codes)
+        main(functions, br_codes, exclude_br)
         print("!SUCCESS! Reports generated in respective folders")
         sleep(2)
     except Exception as e:
