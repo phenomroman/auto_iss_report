@@ -315,6 +315,12 @@ if __name__ == '__main__':
             print(f"{key}){value}", end="  ")
         selection = int(input("\nChoose a report catagory: ")) - 1
         functions = [f for i, f in enumerate(functions) if i == selection]
-    # run main function
-    main(functions, br_codes, exclude_br, selection)
+    # set expiry date for trial run of the app
+    expiry_date = datetime.strptime('2023-12-31', '%Y-%m-%d')
+    if datetime.today() < expiry_date:
+        # run main function
+        main(functions, br_codes, exclude_br, selection)
+    else:
+        # show expried message
+        print(f"!TRIAL PERIOD EXPIRED! Please contact developer for renewal. @phenomroman")
     sleep(2)
