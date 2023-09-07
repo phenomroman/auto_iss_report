@@ -147,7 +147,7 @@ def same_m_adjustments(indir, br_codes):
     df['BR.'] = df['RELATED_ACCOUNT'].str[:3]
     br_list = list(df['BR.'].unique())
     br_list = [br_code for br_code in br_list if br_code in br_codes]
-    product_codes = ['L035', 'L047', 'L062', 'L063', 'L064', 'L072', 'L073', 'L223', 'L226', 'L233']
+    product_codes = ['L035', 'L041', 'L044', 'L047', 'L060', 'L061', 'L062', 'L063', 'L064', 'L072', 'L073', 'L076', 'L223', 'L226', 'L233']
     df = df.loc[df['BR.'].isin(br_list) & df['PRODUCT_CODE'].isin(product_codes)]
     return df
 
