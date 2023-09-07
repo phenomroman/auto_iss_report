@@ -301,11 +301,8 @@ if __name__ == '__main__':
     br_codes=['001', '091', '101', '102', '103', '104', '105', '106', '110', '116', '195', '200', '301', '331', '999']
     exclude_br = []
     if user_input("Do you want to exclude any branch?"):
-        n = int(input("How many branhces do you want to exclude? "))
-        while n > 0:
-            br = input("Exclude Branch code: ")
-            exclude_br.append(br)
-            n -= 1
+        input_list = input("Branch codes seperated with comma: ")
+        exclude_br = input_list.split(',')
         br_codes = [br_code for br_code in br_codes if br_code not in exclude_br]
     # give users option to select report catagory
     functions =[iss_loan, iss_acceptance]
