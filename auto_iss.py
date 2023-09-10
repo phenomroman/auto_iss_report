@@ -15,7 +15,7 @@ from threading import Thread, Event, Lock
 from time import sleep
 from feats import loading, user_input, auto_column_width, html_to_xl, modify_raw
 import pandas as pd
-import os, sys
+import os
 
 # get last month for report period name
 report_period = datetime.strftime(datetime.today().replace(day=1) - timedelta(days=1), '%B%Y')
@@ -83,9 +83,8 @@ def iss_loan(br_codes, exclude_br=[]):
     for br_code in br_codes:
         # find relevant html file based on name from input list
         url = [f'BAL_SHEET/{file}' for file in files if 'BALSHEETBRN' and br_code in file][0]
-        outfile = f'BAL_SHEET/Excel/{br_code}'
         # convert html to excel
-        df_dic[br_code] = html_to_xl(outfile=f'{outfile}.xlsx', url=url, table_range=slice(1,-1),
+        df_dic[br_code] = html_to_xl(url=url, table_range=slice(1,-1),
                             cols=['Level', 'Leaf', 'GL Code', 'GL Description',
                             'FCY Balance', 'LCY Balance', 'Total'],
                             ignore_list=['Leaf', 'GL Description'])
@@ -188,7 +187,7 @@ def iss_acceptance(br_codes, exclude_br=[]):
     # convert html file to excel and get GLs in the dataframe
     htmls = os.listdir('BAL_SHEET')
     url = [f'BAL_SHEET/{html}' for html in htmls if 'BALSHEET' in html and 'BALSHEETBRN' not in html][0]
-    df_gl = html_to_xl(outfile='BAL_SHEET/Excel/HO.xlsx', url=url, table_range=slice(1,-1),
+    df_gl = html_to_xl(url=url, table_range=slice(1,-1),
             cols=['Level', 'Leaf', 'GL Code', 'GL Description', 'FCY Balance', 'LCY Balance', 'Total'],
             ignore_list=['Leaf', 'GL Description'])
     # get the relevant acceptance bill GLs to calculate total
@@ -258,8 +257,8 @@ def iss_acceptance(br_codes, exclude_br=[]):
     
 def main(functions, br_codes, exclude_br=[], selection=1):
     # create directories if not exist
-    if not os.path.exists('BAL_SHEET/Excel'):
-        os.makedirs('BAL_SHEET/Excel')
+    if not os.path.exists('BAL_SHEET'):
+        os.makedirs('BAL_SHEET')
     if not os.path.exists('RAW_BO'):
         os.makedirs('RAW_BO')
     # generate reports for different parts of ISS with threading to show loader and completion
@@ -284,7 +283,7 @@ def main(functions, br_codes, exclude_br=[], selection=1):
                     print(f"{report_options[selection]} report generated.")
                     print(f"{report_generated}/{reports} reports completed - {round(progress)}%", flush=True)
                 except Exception as e:
-                    print(f"!ERROR! {e} at line {sys.exc_info()[2].tb_lineno}")
+                    print(f"!ERROR! {e}")
         global reports, report_generated, progress
         futures = []
         for f in functions:
@@ -301,7 +300,7 @@ if __name__ == '__main__':
     br_codes=['001', '091', '101', '102', '103', '104', '105', '106', '110', '116', '195', '200', '301', '331', '999']
     exclude_br = []
     if user_input("Do you want to exclude any branch?"):
-        input_list = input("Branch codes seperated with comma: ")
+        input_list = input("Branch codes seperated with comma: ").replace(" ", "")
         exclude_br = input_list.split(',')
         br_codes = [br_code for br_code in br_codes if br_code not in exclude_br]
     # give users option to select report catagory
