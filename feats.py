@@ -57,10 +57,10 @@ def html_to_xl(url, table_range, cols, ignore_list=[], outfile=None):
     for name in [col for col in cols if col not in ignore_list]:
         df[name] = pd.to_numeric(df[name], errors='coerce')
     df = df.dropna() #remove blank rows
-    if outfile: # output to excel file
+    if outfile: #output to excel file
         df.to_excel(outfile, index=False, float_format='%.2f')
-    # return dataframe for further calculation
-    return df
+    else: #return dataframe for further calculation
+        return df
 
 def modify_raw(bo_raw, bo_file, key_id, sheet_name='Report1', row_index=3, col_required=True, row_ignore=[]):
     # set header with proper row & delete blank rows for key_id
