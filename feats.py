@@ -47,7 +47,7 @@ def auto_column_width(sheet, dataframe, ignore_list=[]):
         for col in [chr(i) for i in range(ord('A'), ord('Z')) if chr(i) not in ignore_list]:
             sheet.column_dimensions[col].width = adjusted_width
 
-def html_to_xl(outfile, url, table_range, cols, ignore_list=[]):
+def html_to_xl(url, table_range, cols, ignore_list=[], outfile=None):
     # read html file tables and concatenate required tables into one dataframe
     tables = pd.read_html(url)
     df = pd.concat(tables[table_range], ignore_index=True)
@@ -57,8 +57,9 @@ def html_to_xl(outfile, url, table_range, cols, ignore_list=[]):
     for name in [col for col in cols if col not in ignore_list]:
         df[name] = pd.to_numeric(df[name], errors='coerce')
     df = df.dropna() #remove blank rows
-    # output to excel file and return data
-    df.to_excel(outfile, index=False, float_format='%.2f')
+    if outfile: # output to excel file
+        df.to_excel(outfile, index=False, float_format='%.2f')
+    # return dataframe for further calculation
     return df
 
 def modify_raw(bo_raw, bo_file, key_id, sheet_name='Report1', row_index=3, col_required=True, row_ignore=[]):
