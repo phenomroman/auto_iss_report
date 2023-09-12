@@ -62,12 +62,12 @@ def html_to_xl(url, table_range, cols, ignore_list=[], outfile=None):
     else: #return dataframe for further calculation
         return df
 
-def modify_raw(bo_raw, bo_file, key_id, sheet_name='Report1', row_index=3, col_required=True, row_ignore=[]):
+def modify_raw(bo_raw, bo_file, key_id, sheet_name='Report1', row_index=3, col_required=True, code=slice(3,7), row_ignore=[]):
     # set header with proper row & delete blank rows for key_id
     df = pd.read_excel(bo_raw, sheet_name=sheet_name, header=row_index-1).dropna(subset=[key_id])
     # for data filtering, create new column with product code from contract
     if col_required:
-        new_column = pd.Series(df[key_id].str[3:7], index=df.index)
+        new_column = pd.Series(df[key_id].str[code], index=df.index)
         df.insert(0, 'Code', new_column)
         #exclude unnecessary rows by product codes
         df = df.loc[~df['Code'].isin(row_ignore)]
