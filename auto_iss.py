@@ -22,10 +22,10 @@ report_period = datetime.strftime(datetime.today().replace(day=1) - timedelta(da
 report_options = {1: 'ISS Import Loans', 2: 'ISS Import Bills Acceptance', 3: 'ISS Export Local Bills'}
 
 # function to calculate loan related ISS report
-def iss_loan(br_codes, exclude_br=[]):
+def iss_import_loan(br_codes, exclude_br=[]):
     # create directories if not exist
-    if not os.path.exists('iss_loan/work_files'):
-        os.makedirs('iss_loan/work_files')
+    if not os.path.exists('iss_import_loan/work_files'):
+        os.makedirs('iss_import_loan/work_files')
     # create empty dataframes inside a dictionary based on given branch names to fill branch data later
     df_dic = {}
     for br_code in br_codes:
@@ -104,7 +104,7 @@ def iss_loan(br_codes, exclude_br=[]):
         df_main_sum.loc['Total Loan Disbursed and Settled within this Month'] = [same_m_adjusted]
         # assign branch data to relevant branch and export data branchwise
         df_dic[br_code] = df_main_sum
-        with pd.ExcelWriter(f'iss_loan/work_files/iss_{br_code}.xlsx', engine='openpyxl') as writer:
+        with pd.ExcelWriter(f'iss_import_loan/work_files/iss_{br_code}.xlsx', engine='openpyxl') as writer:
             df_main_sum.to_excel(writer, sheet_name='Main_Summary', float_format='%.2f')
             df_other_sum.to_excel(writer, sheet_name='Other_Summary', float_format='%.2f')
             df_main_merged.to_excel(writer, sheet_name='Main_Details', index=False, float_format='%.2f')
@@ -126,7 +126,7 @@ def iss_loan(br_codes, exclude_br=[]):
     particulars.append('Other Loans')
     df_final.insert(0, 'Particulars', particulars)
     # export final output result in excel
-    with pd.ExcelWriter(f'iss_loan/ISS_Import-Loan_{report_period}.xlsx', engine='openpyxl') as writer:
+    with pd.ExcelWriter(f'iss_import_loan/ISS_Import-Loan_{report_period}.xlsx', engine='openpyxl') as writer:
         df_final.to_excel(writer, float_format='%.2f', index=False)
         # beautify output
         sheet = writer.sheets['Sheet1']
@@ -157,15 +157,15 @@ def derive_loan_amount(df_cat, df_br, index):
     return df_cat_merged, df_cat_sum
 
 # function to calculate accepted bill related ISS report
-def iss_acceptance(br_codes, exclude_br=[]):
+def iss_import_bill(br_codes, exclude_br=[]):
     # create directories if not exist
-    if not os.path.exists('iss_acceptance/work_files'):
-        os.makedirs('iss_acceptance/work_files')
+    if not os.path.exists('iss_import_bill/work_files'):
+        os.makedirs('iss_import_bill/work_files')
     # get relevant files
     files = os.listdir('RAW_BO')
     url = [f'RAW_BO/{file}' for file in files if 'bills' in file.lower()] [0]
     # get modified/cleaned data from 508 bills BO
-    df_bill = modify_raw(url, 'iss_acceptance/work_files/bill508.xlsx', 'Cont. Ref  No.', 
+    df_bill = modify_raw(url, 'iss_import_bill/work_files/bill508.xlsx', 'Cont. Ref  No.', 
                          row_ignore=['IB02', 'IB06', 'IB13', 'IB52', 'IB56', 'IB63', 'IB66'])
     # create extra columns with LC and branch codes for further calculation
     lc_code_column = pd.Series(df_bill['Contract No.'].str[6:8], index=df_bill.index)
@@ -173,7 +173,7 @@ def iss_acceptance(br_codes, exclude_br=[]):
     df_bill.insert(1, 'LC Code', 'LC' + lc_code_column.astype(str))
     df_bill.insert(2, 'Br. Code', br_code_column)
     # export modified working file
-    with pd.ExcelWriter('iss_acceptance/work_files/bill_508.xlsx', engine='openpyxl') as writer:
+    with pd.ExcelWriter('iss_import_bill/work_files/bill_508.xlsx', engine='openpyxl') as writer:
         df_bill.to_excel(writer, sheet_name='Report1', float_format='%.2f', index=False)
         sheet = writer.sheets['Report1']
         for cell in sheet['G']:
@@ -244,7 +244,7 @@ def iss_acceptance(br_codes, exclude_br=[]):
     df_final.insert(0, key_col.name, key_col)
     df_final.insert(len(df_final.columns), 'Main Operation', df_final.sum(axis=1, numeric_only=True))
     # export final output result in excel
-    with pd.ExcelWriter(f'iss_acceptance/ISS_Bills-Acceptance_{report_period}.xlsx', engine='openpyxl') as writer:
+    with pd.ExcelWriter(f'iss_import_bill/ISS_Import-Bills_{report_period}.xlsx', engine='openpyxl') as writer:
         df_final.to_excel(writer, float_format='%.2f', index=False)
         # beautify output
         sheet = writer.sheets['Sheet1']
@@ -350,7 +350,7 @@ def iss_export_bill(br_codes, exclude_br=[]):
     df_final.insert(0, key_col.name, key_col)
     df_final.insert(len(df_final.columns), 'Main Operation', df_final.sum(axis=1, numeric_only=True))
     # export final output result in excel
-    with pd.ExcelWriter(f'iss_export_bill/ISS_Local-Export_{report_period}.xlsx', engine='openpyxl') as writer:
+    with pd.ExcelWriter(f'iss_export_bill/ISS_Export-Local_{report_period}.xlsx', engine='openpyxl') as writer:
         df_final.to_excel(writer, float_format='%.2f', index=False)
         # beautify output
         sheet = writer.sheets['Sheet1']
@@ -410,7 +410,7 @@ if __name__ == '__main__':
         exclude_br = input_list.split(',')
         br_codes = [br_code for br_code in br_codes if br_code not in exclude_br]
     # give users option to select report catagory
-    functions =[iss_loan, iss_acceptance, iss_export_bill]
+    functions =[iss_import_loan, iss_import_bill, iss_export_bill]
     selection = 0
     if user_input("Do you want to generate only a part of the report?"):
         for key, value in report_options.items():
