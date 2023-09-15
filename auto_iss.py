@@ -17,9 +17,9 @@ from feats import loading, user_input, auto_column_width, html_to_xl, modify_raw
 import pandas as pd
 import os
 
-# get last month for report period name
+# get last month as report period name and define reports
 report_period = datetime.strftime(datetime.today().replace(day=1) - timedelta(days=1), '%B%Y')
-report_options = {1: 'ISS Import Loan', 2: 'ISS Bills Acceptance'}
+report_options = {1: 'ISS Import Loans', 2: 'ISS Import Bills Acceptance', 3: 'ISS Export Local Bills'}
 
 # function to calculate loan related ISS report
 def iss_loan(br_codes, exclude_br=[]):
@@ -254,7 +254,113 @@ def iss_acceptance(br_codes, exclude_br=[]):
         for col in col_list:
             for cell in sheet[col]:
                 cell.number_format = '#,##0.00'
-    
+
+# function to calculate export bill related ISS report
+def iss_export_bill(br_codes, exclude_br=[]):
+    # create directories if not exist
+    if not os.path.exists('iss_export_bill/work_files'):
+        os.makedirs('iss_export_bill/work_files')
+    # define required particulars
+    particulars = ['Accepted Bills Receivable (Local)', 'Total Loan Outstanding Against IBP/LDBP',
+                    'Total Outstanding of Acceptance Received from Other Bank/branch Against  FBP/IBP/ABP',
+                    'Total Acceptance Matured to Other Bank/branch Against  FBP/IBP/ABP',
+                    'Unrealized Acceptance Receivable from Other Bank/branch Against  FBP/IBP/ABP',
+                    'Total Foreign Currency in Transit', 'Total Foreign Exchange Holding',
+                    'BILLS FOR COLLECTION (INLAND BILL SME+CORP)']
+    # create empty dataframes inside a dictionary based on given branch names
+    df_dic = {}
+    for br_code in br_codes:
+        df_dic[br_code] = {}
+    # get BO files, GL html files and related gl headers
+    bo_files = os.listdir('RAW_BO')
+    bo_603 = [f"RAW_BO/{file}" for file in bo_files if '603r' in file.lower()][0]
+    df_603r = modify_raw(bo_603, 'iss_export_bill/work_files/603R.xlsx', 'Contract Ref No', row_index=4, col_required=True, code=slice(0,3))
+    df_603 = df_603r.dropna(subset='Accept Dt.')
+    df_603_mod = df_603.loc[~df_603['OPC'].isin(['COL']) & ~df_603['Accept Dt.'].str.match('^[Dd]\w+')]
+    bo_matured = [f"RAW_BO/{file}" for file in bo_files if 'mautured' in file.lower()][0]
+    df_matured = modify_raw(bo_matured, 'iss_export_bill/work_files/matured.xlsx', 'USER_REF_NO', row_index=4, col_required=True, code=slice(4,7))
+    balance_date = datetime.strftime(datetime.today().replace(day=1)-timedelta(days=1), '%Y-%m-%d')
+    first_date = datetime.strftime(datetime.today().replace(day=1, month=1), '%Y-%m-%d')
+    df_matured['MATURITY_DATE'] = pd.to_datetime(df_matured['MATURITY_DATE'])
+    matured_date = (df_matured['MATURITY_DATE'] >= first_date) & (df_matured['MATURITY_DATE'] <= balance_date)
+    df_matured_mod = df_matured.loc[df_matured['OPERATION'].isin(['DIS']) & matured_date]
+    bo_625 = [f"RAW_BO/{file}" for file in bo_files if 'overdue local' in file.lower()][0]
+    df_625 = modify_raw(bo_625, 'iss_export_bill/work_files/625A.xlsx', 'User Ref', row_index=5, col_required=True, code=slice(4,7))
+    df_625_mod = df_625.loc[df_625['Opn'].isin(['DIS']) & (df_625['Maturity Date'] <= balance_date)]
+    df_exrate = pd.read_excel('RAW_BO/Ex-Rate.xlsx')
+    df_625_mod = df_625_mod.merge(df_exrate, how='left', on='Ccy')
+    df_625_mod['LCY_AMOUNT'] = df_625_mod['Bill Amt'] * df_625_mod['Ex. Rate']
+    files = os.listdir('BAL_SHEET')
+    ldbp_gl = [150120019, 150120020, 150120028, 150420019, 150420020, 150420028, 150820027, 150120031, 150420031]
+    local_bills_gl = [501240000, 501250000]
+    # convert html files into excel format and calculate further from dataframe
+    for br_code in br_codes:
+        url = [f"BAL_SHEET/{file}" for file in files if 'BALSHEETBRN' and br_code in file][0]
+        df_dic[br_code] = html_to_xl(url=url, table_range=slice(1,-1),
+                            cols=['Level', 'Leaf', 'GL Code', 'GL Description',
+                            'FCY Balance', 'LCY Balance', 'Total'],
+                            ignore_list=['Leaf', 'GL Description'])
+        # get particular 1 from BO 603R
+        df_local_bills = df_603_mod.loc[df_603_mod['Code'].isin([br_code])]
+        local_bills_outstanding = df_local_bills['Bill Outstanding LCY'].sum()
+        # get particular 2,3 from GL
+        ldbp_outstanding = df_dic[br_code].loc[df_dic[br_code]['GL Code'].isin(ldbp_gl), 'Total'].sum()
+        # get particular 4 from BO ACCEPTANCE MATURED
+        df_matured_bills = df_matured_mod.loc[df_matured_mod['Code'].isin([br_code])]
+        matured_acceptance = df_matured_bills['LCY_AMOUNT'].sum()
+        # get particular 5 from BO 625
+        df_overdue_bills = df_625_mod.loc[df_625_mod['Code'].isin([br_code])]
+        overdue_bills = df_overdue_bills['LCY_AMOUNT'].sum()
+        # get particular 6,7 from BO 603R
+        df_local_bills_foreign_currency = df_603r.loc[df_603r['Code'].isin([br_code]) & ~df_603r['CUR'].isin(['BDT'])]
+        local_bills_foreign_currency = df_local_bills_foreign_currency['Bill Outstanding LCY'].sum()
+        # get particular 8 from GL
+        local_bills_collection = df_dic[br_code].loc[df_dic[br_code]['GL Code'].isin(local_bills_gl), 'Total'].sum()
+        # create dataframe with respective data and set to dictionary
+        df_dic[br_code] = pd.DataFrame(
+            {
+            'Particulars': particulars,
+            br_code: [local_bills_outstanding, ldbp_outstanding, ldbp_outstanding, matured_acceptance, overdue_bills,
+                        local_bills_foreign_currency, local_bills_foreign_currency, local_bills_collection]
+            }
+        )
+        # add branchwise data to excel file as separate sheets
+        if local_bills_outstanding != 0:
+            with pd.ExcelWriter('iss_export_bill/work_files/603R.xlsx', engine='openpyxl', mode='a') as writer:
+                df_local_bills.to_excel(writer, sheet_name=br_code, float_format='%.2f', index=False)
+        if matured_acceptance != 0:
+            with pd.ExcelWriter('iss_export_bill/work_files/matured.xlsx', engine='openpyxl', mode='a') as writer:
+                df_matured_bills.to_excel(writer, sheet_name=br_code, float_format='%.2f', index=False)
+        if overdue_bills != 0:
+            with pd.ExcelWriter('iss_export_bill/work_files/625A.xlsx', engine='openpyxl', mode='a') as writer:
+                df_overdue_bills.to_excel(writer, sheet_name=br_code, float_format='%.2f', index=False)
+        if local_bills_foreign_currency != 0:
+            with pd.ExcelWriter('iss_export_bill/work_files/603F.xlsx', engine='openpyxl') as writer:
+                df_local_bills_foreign_currency.to_excel(writer, sheet_name=br_code, float_format='%.2f', index=False)
+
+    # combine all branch data horizontally, drop columns duplicated during merge, add a total column
+    df_all = pd.concat([df_dic[br_code] for br_code in br_codes], axis=1)
+    # add blank data columns for excluded branches
+    for br_code in exclude_br:
+        df_all[br_code] = pd.NA
+    # get final dataframe with data cleaned and sorted
+    df_final = df_all.loc[:, ~df_all.columns.duplicated()]
+    key_col = df_final.pop(df_final.columns[0])
+    df_final = df_final[sorted(df_final.columns)]
+    df_final.insert(0, key_col.name, key_col)
+    df_final.insert(len(df_final.columns), 'Main Operation', df_final.sum(axis=1, numeric_only=True))
+    # export final output result in excel
+    with pd.ExcelWriter(f'iss_export_bill/ISS_Local-Export_{report_period}.xlsx', engine='openpyxl') as writer:
+        df_final.to_excel(writer, float_format='%.2f', index=False)
+        # beautify output
+        sheet = writer.sheets['Sheet1']
+        auto_column_width(sheet, df_final)
+        sheet.column_dimensions['A'].width = 55
+        col_list = [chr(i) for i in range(ord('B'), ord('Z'))]
+        for col in col_list:
+            for cell in sheet[col]:
+                cell.number_format = '#,##0.00'
+
 def main(functions, br_codes, exclude_br=[], selection=1):
     # create directories if not exist
     if not os.path.exists('BAL_SHEET'):
@@ -304,7 +410,7 @@ if __name__ == '__main__':
         exclude_br = input_list.split(',')
         br_codes = [br_code for br_code in br_codes if br_code not in exclude_br]
     # give users option to select report catagory
-    functions =[iss_loan, iss_acceptance]
+    functions =[iss_loan, iss_acceptance, iss_export_bill]
     selection = 0
     if user_input("Do you want to generate only a part of the report?"):
         for key, value in report_options.items():
